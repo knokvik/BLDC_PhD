@@ -1,98 +1,102 @@
-/**
- * App.jsx — Main dashboard for Real-Time Motor Monitoring System.
- * Connects to backend via Socket.IO, displays live metrics & Recharts charts.
- */
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
-import axios from 'axios';
 import {
-  LineChart, Line, AreaChart, Area, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 
 import Header from './components/Header';
 import MetricCard from './components/MetricCard';
 import ChartCard from './components/ChartCard';
 
-// ── Constants ────────────────────────────────────────────────
-const BACKEND_URL = 'http://localhost:5005';
-const MAX_POINTS = 50;
+// ── Shared Chart Styling ────────────────────────────────────
+const GRID_STYLE = { strokeDasharray: "3 3", stroke: "#334155", vertical: false };
+const AXIS_STYLE = { fill: "#64748b", fontSize: 12 };
+const AXIS_LINE = { stroke: "#334155" };
 
-// ── Custom Recharts Tooltip ──────────────────────────────────
-function CustomTooltip({ active, payload, label }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-slate-800/95 border border-slate-700 rounded-lg px-3 py-2 shadow-xl backdrop-blur-sm">
-      <p className="text-[10px] text-slate-400 mb-1">{label}</p>
-      {payload.map((entry, i) => (
-        <p key={i} className="text-xs font-medium" style={{ color: entry.color }}>
-          {entry.name}: {Number(entry.value).toFixed(2)}
-        </p>
-      ))}
-    </div>
-  );
-}
+const CustomTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-slate-800 border border-slate-700 p-3 rounded shadow-lg">
+        <p className="text-slate-300 text-xs mb-2 font-mono">{label}</p>
+        {payload.map((entry, index) => (
+          <p key={`item-${index}`} className="text-sm font-medium" style={{ color: entry.color }}>
+            {entry.name}: {Number(entry.value).toFixed(2)}
+          </p>
+        ))}
+      </div>
+    );
+  }
+  return null;
+};
 
-// ── Chart theme constants ────────────────────────────────────
-const GRID_STYLE = { strokeDasharray: '3 3', stroke: '#1e293b' };
-const AXIS_STYLE = { fontSize: 10, fill: '#64748b' };
-const AXIS_LINE = { stroke: '#1e293b' };
+// Use VITE_BACKEND_URL or fallback to localhost
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5005';
 
 export default function App() {
   const [data, setData] = useState([]);
   const [connected, setConnected] = useState(false);
-  const socketRef = useRef(null);
 
-  // Fetch history on mount, then subscribe to live updates
   useEffect(() => {
-    // Load historical data
-    axios.get(`${BACKEND_URL}/api/history`)
-      .then((res) => {
-        const formatted = res.data.map(formatReading);
-        setData(formatted.slice(-MAX_POINTS));
+    // 1. Fetch initial history
+    fetch(`${BACKEND_URL}/api/history`)
+      .then(res => res.json())
+      .then(history => {
+        if (Array.isArray(history)) {
+          setData(history.map(formatReading));
+        }
       })
-      .catch((err) => console.warn('History fetch failed:', err.message));
+      .catch(err => console.error('Failed to fetch history:', err));
 
-    // Socket.IO connection
-    const socket = io(BACKEND_URL, { transports: ['websocket', 'polling'] });
-    socketRef.current = socket;
+    // 2. Connect WebSocket
+    const socket = io(BACKEND_URL);
 
-    socket.on('connect', () => setConnected(true));
-    socket.on('disconnect', () => setConnected(false));
+    socket.on('connect', () => {
+      console.log('✅ Connected to WebSocket');
+      setConnected(true);
+    });
 
-    socket.on('newData', (reading) => {
-      const entry = formatReading(reading);
-      setData((prev) => [...prev.slice(-(MAX_POINTS - 1)), entry]);
+    socket.on('disconnect', () => {
+      console.warn('❌ Disconnected from WebSocket');
+      setConnected(false);
+    });
+
+    socket.on('newData', (newReading) => {
+      setData(prev => {
+        const updated = [...prev, formatReading(newReading)];
+        // Keep max 60 points on the chart to prevent performance issues
+        return updated.slice(-60);
+      });
     });
 
     return () => socket.disconnect();
   }, []);
 
-  // Latest reading for metric cards
-  const latest = data.length > 0 ? data[data.length - 1] : null;
-  const prev = data.length > 1 ? data[data.length - 2] : null;
+  const latest = data[data.length - 1] || null;
+  const previous = data[data.length - 2] || null;
 
-  function trend(key) {
-    if (!latest || !prev || !prev[key]) return undefined;
-    return ((latest[key] - prev[key]) / prev[key]) * 100;
-  }
+  // Calculate trends for metric cards
+  const trend = (key) => {
+    if (!latest || !previous) return null;
+    return latest[key] > previous[key] ? 'up' : latest[key] < previous[key] ? 'down' : 'stable';
+  };
 
   return (
-    <div className="min-h-screen bg-[#0a0e17]">
-      <Header connected={connected} />
+    <div className="min-h-screen bg-slate-950 font-sans text-slate-200">
+      <Header connected={connected} backendUrl={BACKEND_URL} />
 
-      <main className="max-w-[1440px] mx-auto px-6 py-6 space-y-8">
-        {/* ═══════ MOTOR MONITORING SECTION ═══════ */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-10">
+
+        {/* ═══════ MOTOR PERFORMANCE SECTION ═══════ */}
         <section>
-          <SectionTitle emoji="⚙️" title="Real-Time Motor Parameters" />
+          <SectionTitle emoji="⚙️" title="Motor Performance" />
 
           {/* Metric Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <MetricCard label="Speed" value={latest?.motor_speed} unit="RPM" icon="🔄" color="cyan" trend={trend('motor_speed')} />
-            <MetricCard label="Torque" value={latest?.torque} unit="Nm" icon="💪" color="blue" trend={trend('torque')} />
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+            <MetricCard label="Speed" value={latest?.motor_speed} unit="RPM" icon="🌪️" color="cyan" trend={trend('motor_speed')} />
+            <MetricCard label="Torque" value={latest?.torque} unit="Nm" icon="🏋️" color="blue" trend={trend('torque')} />
             <MetricCard label="Phase R" value={latest?.phase_r} unit="A" icon="🔴" color="rose" trend={trend('phase_r')} />
             <MetricCard label="Phase Y" value={latest?.phase_y} unit="A" icon="🟡" color="amber" trend={trend('phase_y')} />
-            <MetricCard label="Phase B" value={latest?.phase_b} unit="A" icon="🔵" color="blue" trend={trend('phase_b')} />
+            <MetricCard label="Phase B" value={latest?.phase_b} unit="A" icon="🔵" color="sky" trend={trend('phase_b')} />
           </div>
 
           {/* Charts */}
@@ -150,43 +154,6 @@ export default function App() {
                 </LineChart>
               </ResponsiveContainer>
             </ChartCard>
-            <ChartCard title="Phase Currents" subtitle="R (Amps)">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data}>
-                  <CartesianGrid {...GRID_STYLE} />
-                  <XAxis dataKey="time" tick={AXIS_STYLE} axisLine={AXIS_LINE} tickLine={false} />
-                  <YAxis tick={AXIS_STYLE} axisLine={AXIS_LINE} tickLine={false} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8' }} />
-                  <Line type="monotone" dataKey="phase_r" stroke="#f43f5e" strokeWidth={1} name="Phase R" dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </ChartCard>
-            <ChartCard title="Phase Current" subtitle="B (Amps)">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data}>
-                  <CartesianGrid {...GRID_STYLE} />
-                  <XAxis dataKey="time" tick={AXIS_STYLE} axisLine={AXIS_LINE} tickLine={false} />
-                  <YAxis tick={AXIS_STYLE} axisLine={AXIS_LINE} tickLine={false} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8' }} />
-                  <Line type="monotone" dataKey="phase_y" stroke="#f59e0b" strokeWidth={1} name="Phase Y" dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </ChartCard>
-            <ChartCard title="Phase Current" subtitle="Y (Amps)">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data}>
-                  <CartesianGrid {...GRID_STYLE} />
-                  <XAxis dataKey="time" tick={AXIS_STYLE} axisLine={AXIS_LINE} tickLine={false} />
-                  <YAxis tick={AXIS_STYLE} axisLine={AXIS_LINE} tickLine={false} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8' }} />
-                  <Line type="monotone" dataKey="phase_b" stroke="#3b82f6" strokeWidth={1} name="Phase B" dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </ChartCard>
-
           </div>
         </section>
 

@@ -1,16 +1,21 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  server: {
-    proxy: {
-      '/api': 'http://localhost:5005',
-      '/socket.io': {
-        target: 'http://localhost:5005',
-        ws: true,
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const target = env.VITE_BACKEND_URL || 'http://localhost:5005';
+
+  return {
+    plugins: [react(), tailwindcss()],
+    server: {
+      proxy: {
+        '/api': target,
+        '/socket.io': {
+          target: target,
+          ws: true,
+        },
       },
     },
-  },
-})
+  };
+});

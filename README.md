@@ -1,237 +1,74 @@
 # 🏭 Real-Time Motor Monitoring System
 
-Offline Industrial IoT web application for monitoring real-time motor and inverter parameters. Uses MQTT data ingestion, local MySQL storage, real-time WebSocket updates, and a React dashboard.
-
-**Fully offline** — no cloud services required.  
-**macOS compatible** — Intel & Apple Silicon (M1/M2/M3).
+Offline & Cloud-ready Industrial IoT web application for monitoring real-time motor and inverter parameters. Uses MQTT data ingestion, PostgreSQL storage, real-time WebSocket updates, and a React dashboard.
 
 ---
 
-## 📐 Architecture
+## ☁️ Cloud Deployment Guide (Supabase + Render + Vercel)
 
-```
-ESP8266 (or simulation mode)
-  ↓
-Mosquitto MQTT Broker (local)
-  ↓
-Node.js Backend (Express + Socket.IO)
-  ↓
-MySQL Server (local)
-  ↓
-React Frontend (Vite + TailwindCSS + Recharts)
-```
+This project has been updated to support deploying to the cloud. Vercel is used for the frontend, Render for the long-running backend, and Supabase for the PostgreSQL database.
 
----
+### 1. Database Setup (Supabase)
+1. Go to [Supabase](https://supabase.com) and create a new project.
+2. In the project dashboard, go to the **SQL Editor**.
+3. Copy the contents of `database/schema.sql` and run it to create the `motor_readings` table.
+4. Go to **Project Settings -> Database** and copy the **Connection string** (URI). Replace `[YOUR-PASSWORD]` with your actual database password.
 
-## 🍎 macOS Setup Guide
+### 2. Backend Setup (Render)
+Render is used for the backend because it supports long-running Node.js processes and WebSockets, which Vercel Serverless Functions do not support.
 
-### 1. Install Homebrew (if not installed)
+1. Go to [Render](https://render.com) and create a **New Web Service**.
+2. Connect your GitHub repository.
+3. Set the **Root Directory** to `motor-backend`.
+4. Set the **Build Command** to `npm install`.
+5. Set the **Start Command** to `node server.js`.
+6. Add the following **Environment Variables**:
+   - `DATABASE_URL` = (The connection string you copied from Supabase)
+   - `SIMULATION` = `true` (if you want it to generate random data to test)
+7. Deploy the service and copy the deployed URL (e.g., `https://motor-backend.onrender.com`).
 
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
-
-After installation, follow the terminal instructions to add Homebrew to your PATH:
-
-```bash
-echo >> ~/.zprofile
-echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
-eval "$(/opt/homebrew/bin/brew shellenv)"
-```
-
-### 2. Install Node.js (LTS)
-
-```bash
-brew install node
-```
-
-Verify:
-
-```bash
-node -v   # e.g. v20.x.x
-npm -v    # e.g. 10.x.x
-```
-
-### 3. Install & Start MySQL
-
-```bash
-brew install mysql
-brew services start mysql
-```
-
-Secure the installation (set a root password):
-
-```bash
-mysql_secure_installation
-```
-
-Login to test:
-
-```bash
-mysql -u root -p
-```
-
-### 4. Install & Start Mosquitto (MQTT Broker)
-
-```bash
-brew install mosquitto
-brew services start mosquitto
-```
-
-Test the broker:
-
-```bash
-# In one terminal — subscribe:
-mosquitto_sub -t test
-
-# In another terminal — publish:
-mosquitto_pub -t test -m "hello"
-```
+### 3. Frontend Setup (Vercel)
+1. Go to [Vercel](https://vercel.com) and **Add New Project**.
+2. Connect your GitHub repository.
+3. Set the **Framework Preset** to `Vite`.
+4. Set the **Root Directory** to `motor-frontend`.
+5. Add the following **Environment Variable**:
+   - `VITE_BACKEND_URL` = (The URL of your deployed Render backend, e.g., `https://motor-backend.onrender.com`)
+6. Deploy the project!
 
 ---
 
-## 🗄️ Database Setup
+## 💻 Local Development (macOS/Linux)
 
-Create the database and table:
+### 1. Install Dependencies
+Make sure you have Node.js installed.
 
-```bash
-mysql -u root -p < database/schema.sql
-```
+`brew install node`
 
-This creates:
-- Database: `motor_monitoring`
-- Table: `motor_readings` (id, motor_speed, torque, phase_r, phase_y, phase_b, inverter_current, dc_voltage, pwm_frequency, timestamp)
+### 2. Start PostgreSQL (Local)
+If you want to run the database locally instead of Supabase:
 
----
+`brew install postgresql`
+`brew services start postgresql`
+`psql postgres -c "CREATE DATABASE motor_monitoring;"`
+`psql motor_monitoring < database/schema.sql`
 
-## ⚙️ Backend Setup
+### 3. Start Backend
+`cd motor-backend`
+`npm install`
 
-```bash
-cd motor-backend
-npm install
-```
+Create a `.env` file in `motor-backend`:
+`PORT=5005`
+`DATABASE_URL=postgresql://user:password@localhost:5432/motor_monitoring`
+`SIMULATION=true`
 
-### Configure environment variables
+Run the backend:
+`node server.js`
 
-Edit `motor-backend/.env`:
-
-```env
-PORT=5005
-DB_HOST=localhost
-DB_USER=root
-DB_PASSWORD=    # ← set your MySQL root password
-DB_NAME=motor_monitoring
-MQTT_URL=mqtt://localhost
-SIMULATION=true              # set to false for live MQTT mode
-```
-
-### Run the backend
-
-```bash
-node server.js
-```
-
-You should see:
-
-```
-✅ Connected to MySQL database
-🧪 Simulation mode: generating random data every 2 seconds
-🚀 Motor Monitoring backend running on http://localhost:5005
-```
-
----
-
-## 🖥️ Frontend Setup
-
-```bash
-cd motor-frontend
-npm install
-npm run dev
-```
+### 4. Start Frontend
+In a new terminal:
+`cd motor-frontend`
+`npm install`
+`npm run dev`
 
 Open **http://localhost:5173** in your browser.
-
----
-
-## 🧪 Simulation Mode
-
-Set `SIMULATION=true` in `motor-backend/.env` to generate random motor data every 2 seconds **without** requiring an ESP8266 or Mosquitto.
-
-The simulated data includes realistic ranges:
-- Motor Speed: 1400–1600 RPM
-- Torque: 30–60 Nm
-- Phase Currents: 10–15 A
-- Inverter Current: 12–18 A
-- DC Voltage: 620–660 V
-- PWM Frequency: 2–8 kHz
-
----
-
-## 📡 Manual MQTT Testing
-
-With `SIMULATION=false` and Mosquitto running, publish test data:
-
-```bash
-mosquitto_pub -t motor/data -m '{"motor_speed":1500,"torque":45,"phase_r":12,"phase_y":13,"phase_b":11,"inverter_current":14,"dc_voltage":640,"pwm_frequency":4}'
-```
-
----
-
-## 📦 Project Structure
-
-```
-motor/
-├── database/
-│   └── schema.sql              # MySQL schema
-├── motor-backend/
-│   ├── server.js               # Express + MQTT + Socket.IO server
-│   ├── .env                    # Environment configuration
-│   └── package.json
-├── motor-frontend/
-│   ├── src/
-│   │   ├── App.jsx             # Main dashboard
-│   │   ├── main.jsx            # Entry point
-│   │   ├── index.css           # TailwindCSS + design tokens
-│   │   └── components/
-│   │       ├── Header.jsx      # Top nav bar
-│   │       ├── MetricCard.jsx  # Live metric display cards
-│   │       └── ChartCard.jsx   # Chart container
-│   ├── index.html
-│   ├── vite.config.js
-│   └── package.json
-└── README.md
-```
-
----
-
-## 🚀 Quick Start (TL;DR)
-
-```bash
-# 1. Start MySQL & Mosquitto
-brew services start mysql
-brew services start mosquitto
-
-# 2. Create database
-mysql -u root -p < database/schema.sql
-
-# 3. Start backend (edit .env first with your MySQL password)
-cd motor-backend
-npm install
-node server.js
-
-# 4. Start frontend (in a new terminal)
-cd motor-frontend
-npm install
-npm run dev
-
-# 5. Open http://localhost:5173
-```
-
----
-
-## 🚫 Constraints
-
-- Runs completely offline (localhost only)
-- No cloud APIs
-- No Docker required
-- Compatible with macOS Intel & Apple Silicon

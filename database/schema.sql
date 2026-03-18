@@ -1,22 +1,18 @@
--- Motor Monitoring System Database Schema
--- Run this file to set up the database:
---   mysql -u root -p < database/schema.sql
-
-CREATE DATABASE IF NOT EXISTS motor_monitoring;
-USE motor_monitoring;
+-- Motor Monitoring System Database Schema (PostgreSQL for Supabase)
+-- Run this in the Supabase SQL Editor
 
 CREATE TABLE IF NOT EXISTS motor_readings (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  motor_speed FLOAT NOT NULL,
-  torque FLOAT NOT NULL,
-  phase_r FLOAT NOT NULL,
-  phase_y FLOAT NOT NULL,
-  phase_b FLOAT NOT NULL,
-  inverter_current FLOAT NOT NULL,
-  dc_voltage FLOAT NOT NULL,
-  pwm_frequency FLOAT NOT NULL,
-  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+  id SERIAL PRIMARY KEY,
+  motor_speed REAL NOT NULL,
+  torque REAL NOT NULL,
+  phase_r REAL NOT NULL,
+  phase_y REAL NOT NULL,
+  phase_b REAL NOT NULL,
+  inverter_current REAL NOT NULL,
+  dc_voltage REAL NOT NULL,
+  pwm_frequency REAL NOT NULL,
+  timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Index on timestamp for efficient time-range queries
-CREATE INDEX idx_timestamp ON motor_readings(timestamp);
+CREATE INDEX IF NOT EXISTS idx_timestamp ON motor_readings(timestamp);
