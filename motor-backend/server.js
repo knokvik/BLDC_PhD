@@ -15,6 +15,9 @@ const mqtt = require('mqtt');
 const PORT = process.env.PORT || 5000;
 const DB_CONFIG = {
   connectionString: process.env.DATABASE_URL, // e.g., postgresql://user:password@host:port/dbname
+  ssl: {
+    rejectUnauthorized: false // <--- THIS IS THE MAGIC LINE
+  }
 };
 const MQTT_URL = process.env.MQTT_URL || 'mqtt://localhost';
 const SIMULATION = process.env.SIMULATION === 'true';
