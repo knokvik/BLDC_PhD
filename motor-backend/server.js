@@ -1,6 +1,6 @@
 // ============================================================
 // Motor Monitoring System — Backend Server
-// Express + MySQL + MQTT + Socket.IO
+// Express + PostgreSQL + MQTT + Socket.IO
 // ============================================================
 
 require('dotenv').config();
@@ -8,19 +8,13 @@ const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const { Server } = require('socket.io');
-const mysql = require('mysql2/promise');
+const { Pool } = require('pg');
 const mqtt = require('mqtt');
 
 // ── Configuration ───────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 const DB_CONFIG = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'motor_monitoring',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
+  connectionString: process.env.DATABASE_URL, // e.g., postgresql://user:password@host:port/dbname
 };
 const MQTT_URL = process.env.MQTT_URL || 'mqtt://localhost';
 const SIMULATION = process.env.SIMULATION === 'true';
@@ -36,18 +30,18 @@ const io = new Server(server, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
 });
 
-// ── MySQL connection pool ───────────────────────────────────
+// ── PostgreSQL connection pool ───────────────────────────────────
 let pool;
 
 async function initDatabase() {
   try {
-    pool = mysql.createPool(DB_CONFIG);
+    pool = new Pool(DB_CONFIG);
     // Verify connection
-    const connection = await pool.getConnection();
-    console.log('✅ Connected to MySQL database');
-    connection.release();
+    const client = await pool.connect();
+    console.log('✅ Connected to PostgreSQL database');
+    client.release();
   } catch (err) {
-    console.error('❌ MySQL connection failed:', err.message);
+    console.error('❌ PostgreSQL connection failed:', err.message);
     console.log('⏳ Retrying in 5 seconds...');
     setTimeout(initDatabase, 5000);
   }
@@ -57,7 +51,7 @@ async function initDatabase() {
 async function insertReading(data) {
   const sql = `INSERT INTO motor_readings
     (motor_speed, torque, phase_r, phase_y, phase_b, inverter_current, dc_voltage, pwm_frequency)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`;
   const values = [
     data.motor_speed,
     data.torque,
@@ -70,8 +64,8 @@ async function insertReading(data) {
   ];
 
   try {
-    const [result] = await pool.execute(sql, values);
-    return result.insertId;
+    const result = await pool.query(sql, values);
+    return result.rows[0].id;
   } catch (err) {
     console.error('❌ DB insert error:', err.message);
     return null;
@@ -174,10 +168,10 @@ function startSimulation() {
 // ── REST endpoint — historical data ─────────────────────────
 app.get('/api/history', async (_req, res) => {
   try {
-    const [rows] = await pool.execute(
+    const result = await pool.query(
       'SELECT * FROM motor_readings ORDER BY timestamp DESC LIMIT 50'
     );
-    res.json(rows.reverse()); // oldest-first for charts
+    res.json(result.rows.reverse()); // oldest-first for charts
   } catch (err) {
     console.error('❌ History query error:', err.message);
     res.status(500).json({ error: 'Failed to fetch history' });
