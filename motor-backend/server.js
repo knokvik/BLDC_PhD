@@ -12,17 +12,23 @@ const { Pool } = require('pg');
 const mqtt = require('mqtt');
 
 // ── Configuration ───────────────────────────────────────────
+// ── Configuration ───────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
+
+// Grab the raw URL from Render
+const rawDbUrl = process.env.DATABASE_URL || '';
+// Strip away any ?sslmode=require or other parameters that override our custom SSL object
+const cleanDbUrl = rawDbUrl.split('?')[0];
+
 const DB_CONFIG = {
-  connectionString: process.env.DATABASE_URL, // e.g., postgresql://user:password@host:port/dbname
+  connectionString: cleanDbUrl, 
   ssl: {
-    rejectUnauthorized: false // <--- THIS IS THE MAGIC LINE
+    rejectUnauthorized: false // This will now correctly force Node to accept the certificate
   }
 };
 const MQTT_URL = process.env.MQTT_URL || 'mqtt://localhost';
 const SIMULATION = process.env.SIMULATION === 'true';
 const MQTT_TOPIC = 'motor/data';
-
 // ── Express + Socket.IO setup ───────────────────────────────
 const app = express();
 app.use(cors());
